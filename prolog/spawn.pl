@@ -10,7 +10,32 @@
     async(0,-,+),
     async_policy(+,0,-,+).
 
-:- thread_local spawn_token_needs_await/1.
+:- thread_local
+    spawn_token_needs_await/1.
+
+%% spawn(:Goal) is det.
+%
+%  Seek solutions to Goal in a background thread. Solutions are
+%  communicated to the calling thread by unifying free variables in
+%  Goal.  If Goal has no free variables, you must use async/2 instead.
+%
+%  For example, the following code runs in about 1 second because both
+%  sleep/1 calls happen in parallel. When foo/0 unifies L, it blocks
+%  until silly/1 has finished.
+%
+%      silly(L) :-
+%          sleep(1),
+%          L = [a,b].
+%      foo :-
+%          spawn(silly(L)),
+%          sleep(1),
+%          L=[A,B],  % blocks, if necessary
+%          writeln(A-B).
+%
+%  If Goal produces multiple solutions, they're iterated when
+%  backtracking over the unification (=|L=[A,B]|= above). If Goal fails
+%  or throws an exception, the calling thread sees it at the unification
+%  point.
 spawn(Goal) :-
     term_variables(Goal, Vars),
     async(Goal, Token),
@@ -31,10 +56,24 @@ spawn_thaw(Id,Token) :-
     ).
 
 
+%% async(:Goal,-Token) is det.
+%
+%  Like async/3 with default options.
 async(Goal,Token) :-
     async(Goal,Token,[]).
 
 
+%% async(:Goal,-Token,+Options) is det.
+%
+%  Seek solutions to Goal in a background thread. Use await/1 with Token
+%  to block until the computation is done. Solutions are communicated to
+%  the calling thread by unifying free variables in Goal.  Both Goal and
+%  its corresponding solutions are copied between threads. Be aware if
+%  any of those terms are very large.
+%
+%  This predicate does not yet accept any options. It currently creates
+%  a new thread each time it's called. That will eventually be
+%  configurable.
 async(Goal,Token,_Options) :-
     _ = Opts, % parse Options into a record term
     async_policy(ephemeral, Goal, Token, Opts).
@@ -71,6 +110,15 @@ ephemeral_worker(work(Goal,Vars,SolutionsQ)) :-
     ).
 
 
+%% await(+Token)
+%
+%  Wait for solutions from an async/3 call. Token is an opaque value
+%  provided by async/3 which identifies a background computation.
+%
+%  await/1 strives to have the same determinism as the original Goal
+%  passed to async/3. If that goal fails, await/1 fails. If that goal
+%  throws an exception, so does await/1. If that goal produces many
+%  solutions, so does await/1 on backtracking.
 await(ephemeral_token(Vars,SolutionsQ)) :-
     repeat,
     thread_get_message(SolutionsQ,Solution),
