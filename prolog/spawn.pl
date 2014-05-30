@@ -1,14 +1,19 @@
 :- module(spawn, [ async/2
                  , async/3
                  , await/1
+                 , lazy/1
                  , spawn/1
                  , spawn/2
                  ]).
+:- use_module(library(predicate_options)).
 :- use_module(library(record)).
 
 % convenience for async/3 options
-:- record opts( policy:oneof([ephemeral])=ephemeral
+:- record opts( policy:oneof([ephemeral,lazy])=ephemeral
               ).
+:- predicate_options(spawn/2,2,[pass_to(async/3,3)]).
+:- predicate_options(async/3,3, [ policy(+oneof([ephemeral,lazy]))
+                                ]).
 
 :- meta_predicate
     spawn(0),
@@ -55,19 +60,48 @@ spawn(Goal,Options) :-
     async(Goal, Token, Options),
     Id is random(1<<63),
     assert(spawn_token_needs_await(Id)),
-    maplist(spawn_freeze(Id,Token), Vars).
+    make_opts(Options,Opts),
+    maplist(spawn_freeze(Id,Token,Opts), Vars).
 
-spawn_freeze(Id,Token, Var) :-
-    freeze(Var,spawn_thaw(Id,Token)).
+spawn_freeze(Id,Token,Opts,Var) :-
+    freeze(Var,spawn_thaw(Id,Token,Opts)).
 
-spawn_thaw(Id,Token) :-
+spawn_thaw(Id,Token,Opts) :-
     ( retract(spawn_token_needs_await(Id)) ->
         debug(spawn,"Await on ~d",[Id]),
+        await(Token)
+    ; opts_policy(Opts,lazy) ->
+        debug(spawn,"Awaiting again on ~d",[Id]),
         await(Token)
     ; % already called await/1 ->
         debug(spawn,"Already did await on ~d",[Id]),
         true
     ).
+
+
+%% lazy(Goal) is det.
+%
+%  Postpone execution of goal until needed. This is just spawn/1
+%  using the =lazy= thread policy.
+%
+%  lazy/1 can be helpful when complicated or expensive goals are only
+%  needed in some code paths but duplicating those goals is too verbose.
+%  It can be an alternative to creating a new, named predicate. For
+%  example,
+%
+%      foo(Xs) :-
+%          lazy(i_am_slow(a,B,[c(C),d(d),e(etc)])), % complicated
+%
+%          ( day_of_week(tuesday) ->
+%              append(B,C,Xs)
+%          ; phase_of_moon(full) ->
+%              append(C,B,Xs)
+%          ; true ->
+%              % i_am_slow/3 not executed in this code path
+%              Xs = [hi]
+%          ).
+lazy(Goal) :-
+    spawn(Goal,[policy(lazy)]).
 
 
 %% async(:Goal,-Token) is det.
@@ -85,9 +119,12 @@ async(Goal,Token) :-
 %  its corresponding solutions are copied between threads. Be aware if
 %  any of those terms are very large.
 %
-%  This predicate does not yet accept any options. It currently creates
-%  a new thread each time it's called. That will eventually be
-%  configurable.
+%  Options are as follows:
+%
+%    * policy(Policy)
+%    If =ephemeral= (default), create a new thread in which to call
+%    goal. If =lazy=, only execute Goal when await/1 is called; no
+%    background threads are used.
 async(Goal,Token,Options) :-
     make_opts(Options,Opts),
     opts_policy(Opts, Policy),
@@ -103,6 +140,8 @@ async_policy(ephemeral, Goal, Token, _Opts) :-
     % start the worker thread
     Work = work(Goal,Vars,SolutionsQ),
     thread_create(ephemeral_worker(Work), _, [detached(true)]).
+async_policy(lazy,Goal,Token,_Opts) :-
+    Token = lazy_thunk(Goal).
 
 
 ephemeral_worker(work(Goal,Vars,SolutionsQ)) :-
@@ -150,3 +189,5 @@ await(ephemeral_token(Vars,SolutionsQ)) :-
     ; % what? ->
         throw(unexpected_await_solution(Solution))
     ).
+await(lazy_thunk(Goal)) :-
+    call(Goal).

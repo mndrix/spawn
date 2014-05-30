@@ -21,70 +21,58 @@ thread_count(N) :-
 
 :- use_module(library(tap)).
 
-% two spawned goals actually happen in parallel
-goes_faster :-
+% sleep only happens when necessary
+timing :-
     get_time(Start),
-    spawn(delayed_unify(A,a)),
-    spawn(delayed_unify(B,b)),
+    lazy(delayed_unify(A,a)),
     get_time(Mid),
+    Mid - Start < 0.1, % lazy/1 returns immediately
 
-    % getting here takes way less than one second
-    % so these should both still be variables
+    % lazy computation hasn't run yet
     var(A),
-    var(B),
 
-    % wait for the computations to finish
+    % request the computation
     A = a,
-    B = b,
     get_time(End),
 
     % make sure the timings are reasonable
-    Mid - Start < 0.1, % async/1 returns quickly
-    End - Start < 1.1, % sleep calls happened in parallel
-    End - Start > 0.9. % sleep calls actually happened
+    End - Start < 1.1,
+    End - Start > 0.9.
 
 
 % unification with a single solution leaves no choicepoints
 single :-
-    spawn(one_solution(X)),
+    lazy(one_solution(X)),
     X = foo(Y),
     Y == bar.
 
 
 % unification with first or second solution is OK
 double_first :-
-    spawn(two_solutions(X)),
+    lazy(two_solutions(X)),
     X = thing(N),
     N == one,
     !.  % trim choicepoint representing thing(two)
 
 double_second :-
-    spawn(two_solutions(X)),
+    lazy(two_solutions(X)),
     X = thing(N),
     N == two.
 
 
 % unification fails when there are no solutions
 zero(fail) :-
-    spawn(fails(X)),
+    lazy(fails(X)),
     X = never_will_suceed.
 
 
 % unification rethrows its goal's exception
 an_exception(throws(oh_no)) :-
-    spawn(exceptional(X)),
+    lazy(exceptional(X)),
     X = never_will_suceed.
 
 
-% make sure we don't leave threads lying around
-no_leftover_threads :-
-    thread_count(1),  % only the main thread running
-    spawn(one_solution(X)),
-    X = foo(bar),
-    thread_count(1).  % intermediate threads have been reclaimed
-
-
-appending(todo("See https://github.com/mndrix/spawn/issues/1")) :-
-    spawn(atom_codes(hello,Hello)),
+appending :-
+    lazy(atom_codes(hello,Hello)),
     append(Hello,` world`, Message),
     Message = `hello world`.
