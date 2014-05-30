@@ -51,10 +51,14 @@ double :-
     findall(X,await(T),Xs),
     Xs == [foo,bar].
 
+
 % await/1 fails when there are no solutions
 zero(fail) :-
     async(fail,T),
     await(T).
 
 
-% TODO what if Goal throws an exception?
+% await/1 rethrows its goal's exception
+an_exception(throws(oh_no)) :-
+    async(exceptional, T),
+    await(T).

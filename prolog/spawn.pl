@@ -30,8 +30,11 @@ async_policy(ephemeral, Goal, Token, _Opts) :-
 
 ephemeral_worker(work(Goal,Vars,SolutionsQ)) :-
     debug(spawn,"Seeking solutions to: ~q", [Goal]),
-    ( call_cleanup(Goal,Done=true) *->
-        ( var(Done) ->
+    ( catch(call_cleanup(Goal,Done=true),E,true) *->
+        ( nonvar(E) ->
+            debug(spawn,"Caught exception: ~q", [E]),
+            thread_send_message(SolutionsQ,exception(E))
+        ; var(Done) ->
             debug(spawn,"Sending solution: ~q", [Vars]),
             thread_send_message(SolutionsQ,solution(Vars)),
             fail  % look for another solution
@@ -56,6 +59,8 @@ await(ephemeral_token(Vars,SolutionsQ)) :-
     ; Solution = none ->
         !,
         fail
+    ; Solution = exception(E) ->
+        throw(E)
     ; % what? ->
         throw(unexpected_await_solution(Solution))
     ).
