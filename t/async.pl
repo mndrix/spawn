@@ -4,8 +4,17 @@ delayed_unify(X,Y) :-
     sleep(1),
     X = Y.
 
+one_solution(foo).
+
+two_solutions(foo).
+two_solutions(bar).
+
+exceptional :-
+    throw(oh_no).
+
 :- use_module(library(tap)).
 
+% two async goals actually happen in parallel
 goes_faster :-
     get_time(Start),
     async(delayed_unify(A,a), TokenA),
@@ -29,6 +38,23 @@ goes_faster :-
     End - Start < 1.1. % sleep calls happened in parallel
 
 
+% await/1 with a single solution leaves no choicepoints
+single :-
+    async(one_solution(X),T),
+    await(T),
+    X == foo.
+
+
+% await/1 with two solutions finds them both
+double :-
+    async(two_solutions(X), T),
+    findall(X,await(T),Xs),
+    Xs == [foo,bar].
+
+% await/1 fails when there are no solutions
+zero(fail) :-
+    async(fail,T),
+    await(T).
+
+
 % TODO what if Goal throws an exception?
-% TODO what if Goal provides multiple solutions?
-% TODO what if Goal provides no solutions?

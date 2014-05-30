@@ -3,6 +3,11 @@
                  , await/1
                  ]).
 
+:- meta_predicate
+    async(0,-),
+    async(0,-,+),
+    async_policy(+,0,-,+).
+
 async(Goal,Token) :-
     async(Goal,Token,[]).
 
@@ -24,12 +29,33 @@ async_policy(ephemeral, Goal, Token, _Opts) :-
 
 
 ephemeral_worker(work(Goal,Vars,SolutionsQ)) :-
-    forall( call(Goal)
-          , thread_send_message(SolutionsQ,solution(Vars))
-          ),
-    thread_send_message(SolutionsQ,done).
+    debug(spawn,"Seeking solutions to: ~q", [Goal]),
+    ( call_cleanup(Goal,Done=true) *->
+        ( var(Done) ->
+            debug(spawn,"Sending solution: ~q", [Vars]),
+            thread_send_message(SolutionsQ,solution(Vars)),
+            fail  % look for another solution
+        ; Done=true ->
+            debug(spawn,"Final solution: ~q", [Vars]),
+            thread_send_message(SolutionsQ,final(Vars))
+        )
+    ; % no solutions ->
+        debug(spawn, "Found no solutions", []),
+        thread_send_message(SolutionsQ,none)
+    ).
 
 
 await(ephemeral_token(Vars,SolutionsQ)) :-
+    repeat,
     thread_get_message(SolutionsQ,Solution),
-    Solution = solution(Vars).
+    ( Solution = solution(Vars) ->
+        true
+    ; Solution = final(Vars) ->
+        !,
+        true
+    ; Solution = none ->
+        !,
+        fail
+    ; % what? ->
+        throw(unexpected_await_solution(Solution))
+    ).
