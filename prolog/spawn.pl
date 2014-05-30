@@ -1,12 +1,35 @@
 :- module(spawn, [ async/2
                  , async/3
                  , await/1
+                 , spawn/1
                  ]).
 
 :- meta_predicate
+    spawn(0),
     async(0,-),
     async(0,-,+),
     async_policy(+,0,-,+).
+
+:- thread_local spawn_token_needs_await/1.
+spawn(Goal) :-
+    term_variables(Goal, Vars),
+    async(Goal, Token),
+    Id is random(1<<63),
+    assert(spawn_token_needs_await(Id)),
+    maplist(spawn_freeze(Id,Token), Vars).
+
+spawn_freeze(Id,Token, Var) :-
+    freeze(Var,spawn_thaw(Id,Token)).
+
+spawn_thaw(Id,Token) :-
+    ( retract(spawn_token_needs_await(Id)) ->
+        debug(spawn,"Await on ~d",[Id]),
+        await(Token)
+    ; % already called await/1 ->
+        debug(spawn,"Already did await on ~d",[Id]),
+        true
+    ).
+
 
 async(Goal,Token) :-
     async(Goal,Token,[]).
