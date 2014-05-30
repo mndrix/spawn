@@ -12,6 +12,11 @@ two_solutions(bar).
 exceptional :-
     throw(oh_no).
 
+% how many threads are running?
+thread_count(N) :-
+    bagof(Id,S^thread_property(Id,status(S)),Ids),
+    length(Ids,N).
+
 :- use_module(library(tap)).
 
 % two async goals actually happen in parallel
@@ -62,3 +67,11 @@ zero(fail) :-
 an_exception(throws(oh_no)) :-
     async(exceptional, T),
     await(T).
+
+
+% make sure we don't leave threads lying around
+no_leftover_threads :-
+    thread_count(1),  % only the main thread running
+    async(true, T),
+    await(T),
+    thread_count(1).  % intermediate threads have been reclaimed

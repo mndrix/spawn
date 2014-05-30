@@ -25,7 +25,7 @@ async_policy(ephemeral, Goal, Token, _Opts) :-
 
     % start the worker thread
     Work = work(Goal,Vars,SolutionsQ),
-    thread_create(ephemeral_worker(Work), _, []).
+    thread_create(ephemeral_worker(Work), _, [detached(true)]).
 
 
 ephemeral_worker(work(Goal,Vars,SolutionsQ)) :-
