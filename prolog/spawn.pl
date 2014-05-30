@@ -2,6 +2,7 @@
                  , async/3
                  , await/1
                  , spawn/1
+                 , spawn/2
                  ]).
 :- use_module(library(record)).
 
@@ -20,9 +21,17 @@
 
 %% spawn(:Goal) is det.
 %
+%  Like spawn/2 with default options.
+spawn(Goal) :-
+    spawn(Goal, []).
+
+
+%% spawn(:Goal,+Options) is det.
+%
 %  Seek solutions to Goal in a background thread. Solutions are
 %  communicated to the calling thread by unifying free variables in
-%  Goal.  If Goal has no free variables, you must use async/2 instead.
+%  Goal.  If Goal has no free variables, you must use async/3 instead.
+%  Options are passed through to async/3.
 %
 %  For example, the following code runs in about 1 second because both
 %  sleep/1 calls happen in parallel. When foo/0 unifies L, it blocks
@@ -41,9 +50,9 @@
 %  backtracking over the unification (=|L=[A,B]|= above). If Goal fails
 %  or throws an exception, the calling thread sees it at the unification
 %  point.
-spawn(Goal) :-
+spawn(Goal,Options) :-
     term_variables(Goal, Vars),
-    async(Goal, Token),
+    async(Goal, Token, Options),
     Id is random(1<<63),
     assert(spawn_token_needs_await(Id)),
     maplist(spawn_freeze(Id,Token), Vars).
