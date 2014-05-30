@@ -3,6 +3,11 @@
                  , await/1
                  , spawn/1
                  ]).
+:- use_module(library(record)).
+
+% convenience for async/3 options
+:- record opts( policy:oneof([ephemeral])=ephemeral
+              ).
 
 :- meta_predicate
     spawn(0),
@@ -74,9 +79,10 @@ async(Goal,Token) :-
 %  This predicate does not yet accept any options. It currently creates
 %  a new thread each time it's called. That will eventually be
 %  configurable.
-async(Goal,Token,_Options) :-
-    _ = Opts, % parse Options into a record term
-    async_policy(ephemeral, Goal, Token, Opts).
+async(Goal,Token,Options) :-
+    make_opts(Options,Opts),
+    opts_policy(Opts, Policy),
+    async_policy(Policy, Goal, Token, Opts).
 
 
 async_policy(ephemeral, Goal, Token, _Opts) :-
